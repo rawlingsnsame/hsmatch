@@ -6,7 +6,7 @@ import openai
 from openai import OpenAI
 from pinecone import Pinecone
 
-from app.config.settings import settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 

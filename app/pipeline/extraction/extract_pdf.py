@@ -5,13 +5,13 @@ from typing import Optional
 import pdfplumber
 from tqdm import tqdm
 
-from app.pipeline.extraction.constants import (
+from pipeline.extraction.constants import (
     COLUMNS,
     ROW_SNAP_PTS,
     FIRST_DATA_PAGE_IDX,
 )
-from app.pipeline.extraction.models import RawTariffRow, TariffLevel, ExtractionResult
-from app.pipeline.extraction.validators import (
+from pipeline.extraction.models import RawTariffRow, TariffLevel, ExtractionResult
+from pipeline.extraction.validators import (
     classify_code,
     normalize_code,
     clean_designation,
@@ -213,5 +213,5 @@ def run(pdf_path: Path, output_path: Path) -> ExtractionResult:
 
 
 if __name__ == "__main__":
-    from app.config.settings import settings
+    from config.settings import settings
     run(settings.pdf_path, settings.raw_json_path)

@@ -199,7 +199,7 @@ Represents a single HS code result, whether `best_match` or an item in `alternat
 ### Prerequisites
 
 - Python 3.11+
-- A [Pinecone](https://app.pinecone.io) account (free tier is sufficient)
+- A [Pinecone](https://pinecone.io) account (free tier is sufficient)
 - An [OpenRouter](https://openrouter.ai) account
 
 ### Environment variables
@@ -243,7 +243,7 @@ Ingestion flags:
 ### Start the API
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn main:app --reload
 ```
 
 The API will be available at `http://127.0.0.1:8000`.  

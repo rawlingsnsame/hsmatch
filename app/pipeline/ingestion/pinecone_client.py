@@ -23,7 +23,7 @@ class PineconeClient:
             raise ValueError(
                 "Pinecone API key is required. "
                 "Set PINECONE_API_KEY in your .env file. "
-                "Get a free key at https://app.pinecone.io"
+                "Get a free key at https://pinecone.io"
             )
         try:
             from pinecone import Pinecone

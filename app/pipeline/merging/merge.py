@@ -26,15 +26,15 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from app.pipeline.merging.models import MergedTariffRecord, MergeResult
-from app.pipeline.merging.hs_loader import (
+from pipeline.merging.models import MergedTariffRecord, MergeResult
+from pipeline.merging.hs_loader import (
     load_hs_lookup,
     load_section_lookup,
     resolve_en_description,
     HsLookup,
     SectionLookup,
 )
-from app.pipeline.merging.enricher import build_embed_text, compute_apei_exempt
+from pipeline.merging.enricher import build_embed_text, compute_apei_exempt
 
 
 def _digits_only(code: str) -> str:
@@ -234,7 +234,7 @@ def run(
 
 
 if __name__ == "__main__":
-    from app.config.settings import settings
+    from config.settings import settings
     run(
         raw_json_path      = settings.raw_json_path,
         hs_csv_path        = settings.hs_csv_path,

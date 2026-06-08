@@ -5,8 +5,8 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware 
 from fastapi.responses import JSONResponse 
 
-from app.api.routes import router
-from app.config.settings import settings
+from .api.routes import router
+from .config.settings import settings
 
 # Configure root logger for the app
 logging.basicConfig(
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     else:
         # Pre-initialize singletons so first request has no cold-start lag
         try:
-            from app.core.retriever import get_embedding_client, get_pinecone_index
+            from .core.retriever import get_embedding_client, get_pinecone_index
             index  = get_pinecone_index()
             _      = get_embedding_client()  # warms up the OpenAI-compatible embedding client
             stats  = index.describe_index_stats()
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Pinecone warm-up failed: {exc}")
 
         try:
-            from app.core.reranker import get_llm_client
+            from .core.reranker import get_llm_client
             _ = get_llm_client()
             logger.info(f"LLM client ready — model: {settings.openrouter_model}")
         except Exception as exc:
@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
     # Shutdown 
     logger.info("Shutting down...")
     try:
-        from app.core.retriever import get_embedding_client
+        from .core.retriever import get_embedding_client
         client = get_embedding_client()
         client.close()
         logger.info("Embedding client closed")
@@ -134,7 +134,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "app.main:app",
+        "main:app",
         host   = settings.api_host,
         port   = settings.api_port,
         reload = settings.debug,

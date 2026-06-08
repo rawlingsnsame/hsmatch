@@ -2,21 +2,21 @@ import logging
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.core import retriever, reranker
-from app.models.schemas import (
+from ..core import retriever, reranker
+from ..models.schemas import (
     ClassifyRequest,
     ClassifyResponse,
     HealthResponse,
     TariffMatch,
     TariffRates,
 )
-from app.config.settings import settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# ── Helpers 
 
 def _build_query_text(req: ClassifyRequest) -> str:
     """
@@ -70,7 +70,7 @@ def _is_national_subheading(tarif_no: str) -> bool:
     return len(digits) >= 8
 
 
-# ── Routes ─────────────────────────────────────────────────────────────────────
+# ── Routes 
 
 @router.get(
     "/",

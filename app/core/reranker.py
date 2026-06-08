@@ -5,7 +5,7 @@ from functools import lru_cache
 
 from openai import OpenAI
 
-from app.config.settings import settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
