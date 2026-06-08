@@ -2,8 +2,8 @@ import logging
 
 from fastapi import APIRouter, HTTPException, status
 
-from ..core import retriever, reranker
-from ..models.schemas import (
+from core import retriever, reranker
+from models.schemas import (
     ClassifyRequest,
     ClassifyResponse,
     HealthResponse,
