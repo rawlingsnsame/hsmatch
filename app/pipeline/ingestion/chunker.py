@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from pipeline.ingestion.models import TariffChunk
+from app.pipeline.ingestion.models import TariffChunk
 
 logger = logging.getLogger(__name__)
 

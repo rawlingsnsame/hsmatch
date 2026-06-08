@@ -5,10 +5,9 @@ from functools import lru_cache
 
 from openai import OpenAI
 
-from config.settings import settings
+from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
-
 
 # OpenRouter client singleton 
 

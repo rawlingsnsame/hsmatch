@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse 
 
 from app.api.routes import router
-from config.settings import settings
+from app.config.settings import settings
 
 # Configure root logger for the app
 logging.basicConfig(

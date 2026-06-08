@@ -7,10 +7,10 @@ from typing import Optional
 
 from tqdm import tqdm
 
-from pipeline.ingestion.chunker import load_chunks, get_batches, save_chunks
-from pipeline.ingestion.embedder import OpenRouterEmbedder, EmbeddingError
-from pipeline.ingestion.pinecone_client import PineconeClient
-from pipeline.ingestion.models import IngestionResult, TariffChunk
+from app.pipeline.ingestion.chunker import load_chunks, get_batches, save_chunks
+from app.pipeline.ingestion.embedder import OpenRouterEmbedder, EmbeddingError
+from app.pipeline.ingestion.pinecone_client import PineconeClient
+from app.pipeline.ingestion.models import IngestionResult, TariffChunk
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ if __name__ == "__main__":
     parser.add_argument("--limit",   type=int, default=None, help="Only ingest first N chunks")
     args = parser.parse_args()
 
-    from config.settings import settings
+    from app.config.settings import settings
 
     missing = []
     if not settings.openrouter_api_key:

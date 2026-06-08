@@ -1,13 +1,13 @@
 import re
 from typing import Optional
 
-from pipeline.extraction.constants import (
+from app.pipeline.extraction.constants import (
     RE_CHAPTER,
     RE_HEADING,
     RE_SUBHEAD,
     RE_FILLER_DASHES,
 )
-from pipeline.extraction.models import TariffLevel
+from app.pipeline.extraction.models import TariffLevel
 
 
 def classify_code(raw: str) -> Optional[TariffLevel]:
