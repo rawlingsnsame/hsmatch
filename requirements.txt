@@ -1,0 +1,24 @@
+# --- Data pipeline ---
+pdfplumber==0.11.4         
+pandas==3.0.3               # Upgraded from 2.2.2 (Major 3.0 branch)
+tqdm==4.67.1                # Upgraded from 4.66.4
+
+# --- Vector store ---
+pinecone==7.0.0             # Upgraded from 5.0.1 (Now aligns with the 2025/2026 unified API)
+
+# --- Embeddings ---
+sentence-transformers==3.4.1 # Upgraded from 3.0.1
+huggingface-hub==0.28.1     # Upgraded from 0.24.5
+
+# --- LLM (reranker) ---
+openai==1.61.0              # Upgraded from 1.40.0
+
+# --- API ---
+fastapi==0.115.11           # Upgraded from 0.112.0
+uvicorn[standard]==0.38.0   # Upgraded from 0.30.5
+pydantic==2.13.4            # Upgraded from 2.8.2
+pydantic-settings==2.14.1   # Upgraded from 2.4.0
+
+# --- Utilities ---
+python-dotenv==1.0.1        # Up to date (Latest stable pin)
+httpx==0.28.1               # Upgraded from 0.27.0 (Note: deprecated the old `proxies` and `app` shortcuts)
