@@ -10,7 +10,7 @@ from models.schemas import (
     TariffMatch,
     TariffRates,
 )
-from ..config.settings import settings
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
