@@ -178,7 +178,7 @@ if __name__ == "__main__":
     parser.add_argument("--limit",   type=int, default=None, help="Only ingest first N chunks")
     args = parser.parse_args()
 
-    from config.settings import settings
+    from ..config.settings import settings
 
     missing = []
     if not settings.openrouter_api_key:

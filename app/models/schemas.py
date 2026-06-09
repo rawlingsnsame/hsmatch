@@ -1,49 +1,77 @@
 from typing import Optional
 from pydantic import BaseModel, Field
 
+
+CEMAC_MEMBERS = {"CM", "CF", "CG", "GA", "GQ", "TD"}  # Cameroon + 5 others
+EU_MEMBERS = {
+    "AT","BE","BG","CY","CZ","DE","DK","EE","ES","FI","FR","GR",
+    "HR","HU","IE","IT","LT","LU","LV","MT","NL","PL","PT","RO",
+    "SE","SI","SK",
+}
+
+
+def get_trade_regime(origin_iso2: str) -> str:
+    """
+    Determine the trade regime for goods imported into Cameroon
+    based on the origin country ISO code.
+
+    Returns one of:
+      "CEMAC_FREE"      — CEMAC member: internal trade, generally zero duty
+      "EPA_PREFERENTIAL"— EU origin: EPA interim agreement preferential rate
+      "CET_STANDARD"    — All others: CEMAC Common External Tariff applies
+    """
+    code = (origin_iso2 or "").strip().upper()
+    if code in CEMAC_MEMBERS:
+        return "CEMAC_FREE"
+    if code in EU_MEMBERS:
+        return "EPA_PREFERENTIAL"
+    return "CET_STANDARD"
+
+
+def get_regime_description(regime: str) -> str:
+    descriptions = {
+        "CEMAC_FREE":       "CEMAC internal trade — zero or reduced duties apply between member states",
+        "EPA_PREFERENTIAL": "EU-Cameroon EPA interim agreement — preferential (DD APEi) rate applies",
+        "CET_STANDARD":     "CEMAC Common External Tariff — standard DD rate applies",
+    }
+    return descriptions.get(regime, "Standard tariff applies")
+
+
 # Request
+
 class ClassifyRequest(BaseModel):
     product_name: str = Field(
         ...,
         min_length=2,
         max_length=300,
-        description="Short name or trade name of the product",
-        examples=["iPhone 13 Pro Max"],
+        description="Name or trade name of the product. Brand names and model numbers are accepted.",
+        examples=["iPhone 13 Pro Max", "Frozen chicken wings", "Ciment Portland blanc"],
     )
     description: str = Field(
         default="",
         max_length=1000,
         description=(
-            "Optional longer description — include material, form, intended use, "
-            "or trade terms. More detail improves classification accuracy."
+            "Optional longer description. Include material, form, intended use, "
+            "or trade terms. More detail improves accuracy significantly."
         ),
-        examples=["Apple smartphone with 6.7-inch OLED display, 5G, 256GB storage, for retail sale"],
+        examples=["Smartphone, Apple brand, 256GB storage, 5G capable, retail boxed"],
+    )
+    origin_country: str = Field(
+        default="XX",
+        min_length=2,
+        max_length=2,
+        description=(
+            "ISO 3166-1 alpha-2 country code of the product's country of origin. "
+            "Determines which trade regime and duty rate applies on import into Cameroon. "
+            "Use 'XX' if unknown (standard CET rates apply). "
+            "Examples: 'CN' (China), 'FR' (France), 'US' (United States), 'NG' (Nigeria)"
+        ),
+        examples=["CN", "FR", "US", "NG", "XX"],
     )
     language: str = Field(
         default="en",
         pattern="^(en|fr)$",
-        description="Language of your query: 'en' (English) or 'fr' (French)",
-    )
-    origin_country: str = Field(
-        default="CN",
-        min_length=2,
-        max_length=2,
-        description=(
-            "ISO 3166-1 alpha-2 country code of the country where the goods originate "
-            "(country of manufacture or last substantial transformation). "
-            "Default: 'CN' (China). Examples: 'CN', 'US', 'DE', 'FR'."
-        ),
-        examples=["CN"],
-    )
-    destination_country: str = Field(
-        default="CM",
-        min_length=2,
-        max_length=2,
-        description=(
-            "ISO 3166-1 alpha-2 country code of the destination (importing) country. "
-            "Default: 'CM' (Cameroon). Affects applicable duty rates and trade agreement eligibility."
-        ),
-        examples=["CM"],
+        description="Query language: 'en' (English) or 'fr' (French)",
     )
 
     model_config = {
@@ -51,191 +79,88 @@ class ClassifyRequest(BaseModel):
             "examples": [
                 {
                     "product_name": "iPhone 13 Pro Max",
-                    "description": "Apple smartphone with 6.7-inch OLED display, 5G, 256GB storage, for retail sale",
-                    "language": "en",
+                    "description": "Apple smartphone, 256GB, 5G, retail boxed",
                     "origin_country": "CN",
-                    "destination_country": "CM",
-                },
-                {
-                    "product_name": "Frozen chicken wings",
-                    "description": "Poultry wings from broiler chickens, frozen, for retail sale",
                     "language": "en",
-                    "origin_country": "BR",
-                    "destination_country": "CM",
                 },
                 {
-                    "product_name": "Ciment Portland blanc",
-                    "description": "Ciment blanc non coloré artificiellement, en sacs de 50kg",
+                    "product_name": "Ailes de poulet congelées",
+                    "description": "Morceaux de volaille congelés, poulet de chair, vente au détail",
+                    "origin_country": "BR",
                     "language": "fr",
+                },
+                {
+                    "product_name": "Portland cement",
+                    "description": "White Portland cement, not artificially coloured, 50kg bags",
                     "origin_country": "FR",
-                    "destination_country": "CM",
+                    "language": "en",
                 },
             ]
         }
     }
 
 
-# Sub-models
+# Sub-models─
+
 class TariffRates(BaseModel):
-    """Tax rates associated with a tariff line."""
-    dd_rate:     Optional[str] = Field(
-        None,
-        description="Customs duty rate. A percentage string ('20'), 'ex' for exempt, or null.",
-    )
-    tva_rate:    Optional[str] = Field(
-        None,
-        description="VAT rate. A percentage string ('19.25'), 'ex' for exempt, or null.",
-    )
-    dd_apei:     Optional[str] = Field(
+    dd_rate:         Optional[str] = Field(None, description="Standard CEMAC CET customs duty rate (%)")
+    tva_rate:        Optional[str] = Field(None, description="VAT rate (%)")
+    dd_apei:         Optional[str] = Field(None, description="EPA preferential rate (EU origin) — '%' or 'ex'")
+    apei_exempt:     bool          = Field(False, description="True if exempt under EPA agreement")
+    uqn:             Optional[str] = Field(None, description="Statistical unit: 'kg', 'u', 'l', etc.")
+    applicable_rate: Optional[str] = Field(
         None,
         description=(
-            "EPA preferential rate under the EU-CEMAC interim agreement. "
-            "A percentage string, 'ex' (exempt), or null if not applicable."
-        ),
-    )
-    apei_exempt: bool = Field(
-        False,
-        description="True if the product is fully exempt under the EPA agreement.",
-    )
-    uqn:         Optional[str] = Field(
-        None,
-        description=(
-            "Unité Quantitative de Nomenclature — the statistical unit "
-            "for quantity declaration: 'kg', 'u' (unit), 'l' (litre), etc."
+            "The duty rate that actually applies given the origin country and trade regime. "
+            "This is the rate the importer will pay. "
+            "Null if rates could not be determined."
         ),
     )
 
 
-class TradeContext(BaseModel):
-    """Origin/destination trade context and applicable rate guidance."""
-    origin_country:      str = Field(..., description="ISO 3166-1 alpha-2 origin country code")
-    destination_country: str = Field(..., description="ISO 3166-1 alpha-2 destination country code")
-    rate_regime:         str = Field(
-        ...,
-        description=(
-            "The duty rate regime that applies based on origin/destination pair. "
-            "One of: 'CET' (CEMAC Common External Tariff — standard), "
-            "'EPA' (EU-CEMAC interim EPA preferential rate), "
-            "'MFN' (Most Favoured Nation — WTO rate for non-CEMAC, non-EPA partners)."
-        ),
-    )
-    applicable_rate:     Optional[str] = Field(
-        None,
-        description=(
-            "The effective customs duty rate string under the applicable regime "
-            "for this specific HS code and trade pair. "
-            "May be a percentage, 'ex' (exempt), or null if undetermined."
-        ),
-    )
-    trade_notes:         Optional[str] = Field(
-        None,
-        description=(
-            "Short plain-language note on any trade agreement, preference, or "
-            "restriction relevant to this origin/destination pair for this product."
-        ),
-    )
+class QueryExpansion(BaseModel):
+    """Shows how the query was expanded before retrieval. Useful for debugging."""
+    original:      str = Field(..., description="Original product_name as submitted")
+    expanded:      str = Field(..., description="Expanded query sent to the vector store")
+    was_expanded:  bool = Field(..., description="True if LLM expansion was applied")
 
 
 class TariffMatch(BaseModel):
-    """A single HS code match with full context."""
-
-    # Code identity
-    tarif_no:    str = Field(
-        ...,
-        description="Cameroon national tariff code e.g. '0207.14.00'",
-    )
-    code_6digit: str = Field(
-        ...,
-        description="Standard 6-digit HS 2022 code e.g. '020714'",
-    )
-    level:       str = Field(
-        ...,
-        description="Code hierarchy level: 'subheading' | 'heading' | 'chapter'",
-    )
-
-    # Descriptions
-    description_fr: str           = Field(..., description="Official French description (DGD 2025 — legally authoritative)")
-    description_en: Optional[str] = Field(None, description="English description from HS 2022 nomenclature")
-
-    # Hierarchy context
-    heading:         Optional[str] = Field(None, description="Parent 4-digit heading code e.g. '0207'")
+    tarif_no:        str           = Field(..., description="Cameroon national tariff code e.g. '8517.13.00'")
+    code_6digit:     str           = Field(..., description="Standard 6-digit HS code e.g. '851713'")
+    level:           str           = Field(..., description="'subheading' | 'heading' | 'chapter'")
+    description_fr:  str           = Field(..., description="Official French description (DGD 2025 — legally authoritative)")
+    description_en:  Optional[str] = Field(None, description="English description from HS 2022")
+    heading:         Optional[str] = Field(None, description="Parent 4-digit heading code")
     heading_desc_fr: Optional[str] = Field(None, description="Heading description in French")
     heading_desc_en: Optional[str] = Field(None, description="Heading description in English")
-    section:         Optional[str] = Field(None, description="HS section (roman numeral e.g. 'I')")
+    section:         Optional[str] = Field(None, description="HS section roman numeral")
     section_name:    Optional[str] = Field(None, description="Section name in English")
-    chapter:         Optional[str] = Field(None, description="2-digit chapter code e.g. '02'")
+    chapter:         Optional[str] = Field(None, description="2-digit chapter code")
+    rates:           TariffRates   = Field(..., description="Duty rates for this code")
+    similarity_score: float        = Field(..., ge=0.0, le=1.0, description="Cosine similarity (0–1)")
 
-    # Tax rates
-    rates: TariffRates = Field(..., description="Customs duty, VAT, and EPA rates for this code")
 
-    # Relevance score
-    similarity_score: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="Cosine similarity score from vector search (0 = unrelated, 1 = identical)",
-    )
+class TradeRegimeInfo(BaseModel):
+    """Trade regime that applies for this origin→Cameroon import."""
+    origin_country:  str = Field(..., description="Origin country ISO code as submitted")
+    destination:     str = Field("CM", description="Always Cameroon (CM)")
+    regime:          str = Field(..., description="CEMAC_FREE | EPA_PREFERENTIAL | CET_STANDARD")
+    description:     str = Field(..., description="Plain-language explanation of the regime")
 
 
 # Main response
 
 class ClassifyResponse(BaseModel):
-    """Full classification response."""
-
-    # Primary result
-    best_match: TariffMatch = Field(
-        ...,
-        description="The best matching HS code selected by the LLM reranker",
-    )
-    national_subheading_found: bool = Field(
-        ...,
-        description=(
-            "True if a Cameroon national subheading (8+ digits) was found. "
-            "False means only a 6-digit international code could be matched — "
-            "base CET rates apply in that case."
-        ),
-    )
-    confidence: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="LLM confidence in the classification (0–1)",
-    )
-    reasoning: str = Field(
-        ...,
-        description="Plain-language explanation of why this code was selected",
-    )
-
-    # Trade context
-    trade_context: TradeContext = Field(
-        ...,
-        description=(
-            "Origin/destination context and the effective duty rate regime "
-            "applicable to this shipment."
-        ),
-    )
-
-    # Alternatives
-    alternatives: list[TariffMatch] = Field(
-        default_factory=list,
-        description=(
-            "Up to 3 other plausible matches in descending relevance order. "
-            "Review these if the best match doesn't fit your product."
-        ),
-    )
-
-    # Request echo
-    query_product:        str = Field(..., description="Product name as submitted")
-    query_description:    str = Field("",  description="Description as submitted")
-    query_origin:         str = Field(..., description="Origin country ISO code as submitted")
-    query_destination:    str = Field(..., description="Destination country ISO code as submitted")
-    expanded_query_used:  Optional[str] = Field(
-        None,
-        description=(
-            "The trade-language query actually sent to the vector index "
-            "(after brand-name expansion). Shown for transparency."
-        ),
-    )
+    best_match:                TariffMatch       = Field(..., description="Best matching HS code")
+    national_subheading_found: bool              = Field(..., description="True if 8+ digit national code found")
+    confidence:                float             = Field(..., ge=0.0, le=1.0)
+    reasoning:                 str               = Field(..., description="LLM explanation of the classification")
+    alternatives:              list[TariffMatch] = Field(default_factory=list, description="Up to 3 alternatives")
+    trade_regime:              TradeRegimeInfo   = Field(..., description="Trade regime for this origin→CM import")
+    query_expansion:           QueryExpansion    = Field(..., description="How the query was processed before search")
+    query_product:             str               = Field(..., description="Product name as submitted")
+    query_description:         str               = Field("", description="Description as submitted")
 
 
 # Utility responses
@@ -243,8 +168,8 @@ class ClassifyResponse(BaseModel):
 class HealthResponse(BaseModel):
     status:        str = Field(..., description="'ok' or 'degraded'")
     pinecone:      str = Field(..., description="Pinecone connection status")
-    index_vectors: int = Field(0,   description="Total vectors in the index")
-    version:       str = Field("1.1.0")
+    index_vectors: int = Field(0)
+    version:       str = Field("2.0.0")
 
 
 class ErrorResponse(BaseModel):

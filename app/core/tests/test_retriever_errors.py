@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from core import retriever
+from .core import retriever
 
 
 class _FailingClient:

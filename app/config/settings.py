@@ -5,7 +5,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(ROOT / ".env"),
@@ -18,7 +17,7 @@ class Settings(BaseSettings):
     pinecone_api_key:    str = ""
     pinecone_index_name: str = "cameroon-tariff-2025"
 
-    # OpenRouter — single key for embeddings + reranker
+    # OpenRouter — single key for embeddings + LLM
     openrouter_api_key: str = ""
     openrouter_model:   str = "anthropic/claude-3-haiku"
     embedding_model:    str = "openai/text-embedding-3-small"
@@ -41,7 +40,7 @@ class Settings(BaseSettings):
     # RAG parameters
     retrieval_top_k: int   = 10
     rerank_top_n:    int   = 3
-    min_score:       float = 0.30   # slightly lowered — 3-small is cosine-calibrated
+    min_score:       float = 0.25
 
 
 @lru_cache(maxsize=1)

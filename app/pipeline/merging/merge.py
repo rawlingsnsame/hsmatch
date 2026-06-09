@@ -234,7 +234,7 @@ def run(
 
 
 if __name__ == "__main__":
-    from config.settings import settings
+    from ..config.settings import settings
     run(
         raw_json_path      = settings.raw_json_path,
         hs_csv_path        = settings.hs_csv_path,

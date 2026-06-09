@@ -1,4 +1,4 @@
-from models.schemas import TariffRates, TradeContext
+from ..models.schemas import TariffRates, TradeContext
 
 # Country sets 
 

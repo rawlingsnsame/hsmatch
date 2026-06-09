@@ -213,5 +213,5 @@ def run(pdf_path: Path, output_path: Path) -> ExtractionResult:
 
 
 if __name__ == "__main__":
-    from config.settings import settings
+    from ..config.settings import settings
     run(settings.pdf_path, settings.raw_json_path)
