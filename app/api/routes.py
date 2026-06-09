@@ -3,6 +3,8 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 
 from core import retriever, reranker
+from core.query_expander import expand_query
+from core.trade_context import build_trade_context
 from models.schemas import (
     ClassifyRequest,
     ClassifyResponse,
@@ -16,23 +18,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ── Helpers 
-
-def _build_query_text(req: ClassifyRequest) -> str:
-    """
-    Combine product name and description into a single embedding string.
-    Product name is weighted first (more specific signal).
-    """
-    if req.description.strip():
-        return f"{req.product_name} {req.description}"
-    return req.product_name
-
+# Helpers 
 
 def _to_tariff_match(candidate: dict) -> TariffMatch:
-    """
-    Convert a raw Pinecone metadata dict into a typed TariffMatch.
-    Maps '' (empty string from Pinecone) back to None for optional fields.
-    """
+    """Convert a raw Pinecone metadata dict into a typed TariffMatch."""
     def _opt(val: str | None) -> str | None:
         return val if val else None
 
@@ -62,34 +51,29 @@ def _to_tariff_match(candidate: dict) -> TariffMatch:
 
 
 def _is_national_subheading(tarif_no: str) -> bool:
-    """
-    True if the code has 8+ digits (Cameroon national extension).
-    e.g. "0207.14.00" → True,  "020714" → False
-    """
     digits = "".join(ch for ch in tarif_no if ch.isdigit())
     return len(digits) >= 8
 
 
-# ── Routes 
-
-@router.get(
-    "/",
-    tags=["Info"],
-    summary="API information",
-)
+# Routes 
+@router.get("/", tags=["Info"], summary="API information")
 async def root():
-    """Return basic API metadata."""
     return {
         "name":        "Cameroon HS Code Lookup API",
-        "version":     "1.0.0",
+        "version":     "1.1.0",
         "description": "RAG-powered product classification for the Cameroon national tariff schedule",
         "source":      "DGD Tarif des Douanes 2025 (CEMAC CET, HS 2022)",
         "docs":        "/docs",
         "redoc":       "/redoc",
-        "endpoints": {
-            "classify": "POST /classify",
-            "health":   "GET /health",
-        },
+        "endpoints":   {"classify": "POST /classify", "health": "GET /health"},
+        "changes_v1_1": [
+            "Added origin_country and destination_country to request (ISO 3166-1 alpha-2)",
+            "Destination defaults to CM (Cameroon); origin defaults to CN (China)",
+            "Response now includes trade_context with applicable duty regime and rate",
+            "Brand-name query expansion: 'iPhone 13 Pro Max' → HS trade terminology before embedding",
+            "WCO Explanatory Notes scope rules encoded in reranker prompt",
+            "Soft chapter-hint filtering reduces false positives for consumer electronics",
+        ],
     }
 
 
@@ -98,24 +82,15 @@ async def root():
     response_model   = HealthResponse,
     tags             = ["Health"],
     summary          = "API health and readiness check",
-    response_description = "Connectivity status and index vector count",
 )
 async def health():
-    """
-    Check API readiness.
-    Verifies Pinecone is reachable and returns the total vector count.
-    Returns HTTP 200 regardless — check the `status` field in the body.
-    Use this for load balancer health checks.
-    """
     stats = retriever.get_index_stats()
-
     if stats["status"] == "error":
         return HealthResponse(
             status        = "degraded",
             pinecone      = f"error: {stats.get('error', 'unknown')}",
             index_vectors = 0,
         )
-
     return HealthResponse(
         status        = "ok",
         pinecone      = "connected",
@@ -128,33 +103,47 @@ async def health():
     response_model       = ClassifyResponse,
     tags                 = ["Classification"],
     summary              = "Classify a product to its Cameroon HS code",
-    response_description = "Best HS code with duty rates, context, and alternatives",
+    response_description = "Best HS code with duty rates, trade context, and alternatives",
 )
 async def classify(req: ClassifyRequest):
     """
-    Classify a product by name and description to its Harmonized System code
-    under the Cameroon national tariff schedule (DGD 2025, CEMAC CET, HS 2022).
+    Classify a product to its Harmonized System code under the Cameroon tariff schedule.
 
-    **Returns:**
-    - `best_match` — the top HS code with full context and tax rates
-    - `national_subheading_found` — whether an 8/10-digit national code was found
-    - `confidence` — LLM confidence score (0–1)
-    - `reasoning` — plain-language explanation of the classification
-    - `alternatives` — up to 3 other plausible codes for review
+    **New in v1.1:**
+    - `origin_country` and `destination_country` (ISO 3166-1 alpha-2) are now accepted.
+      Destination defaults to **CM** (Cameroon). Origin defaults to **CN** (China).
+    - The response includes a `trade_context` block showing the applicable duty regime
+      (CET / EPA / FREE) and effective rate for the specific trade pair.
+    - Brand names and model numbers (e.g. "iPhone 13 Pro Max") are automatically
+      expanded into HS trade language before embedding — fixing the common 404 issue
+      where consumer product names returned no results.
 
-    **Tip:** More description detail → better accuracy.
-    Include the product's material, form (raw/frozen/processed), and trade use.
-
-    **Languages:** Both English and French queries are supported.
+    **Languages:** English and French queries both supported.
     """
-    query_text = _build_query_text(req)
-    logger.info(f"classify | product='{req.product_name}' | lang={req.language}")
+    origin      = req.origin_country.upper()
+    destination = req.destination_country.upper()
 
-    # ── Step 1: Retrieve candidates ────────────────────────────────────────────
+    logger.info(
+        f"classify | product='{req.product_name}' | lang={req.language} | "
+        f"origin={origin} → dest={destination}"
+    )
+
+    # Step 1: Expand brand-name / consumer query to HS trade language     expansion = expand_query(req.product_name, req.description)
+    primary_query   = expansion["primary"]
+    secondary_query = expansion["secondary"]
+    chapter_hint    = expansion.get("chapter_hint")
+
+    logger.info(
+        f"classify | expanded={expansion['expanded']} | "
+        f"primary='{primary_query}' | chapter_hint={chapter_hint}"
+    )
+
+    # Step 2: Retrieve candidates (primary query, with chapter hint) 
     try:
         candidates = retriever.retrieve(
-            query_text = query_text,
-            top_k      = settings.retrieval_top_k,
+            query_text   = primary_query,
+            top_k        = settings.retrieval_top_k,
+            chapter_hint = chapter_hint,
         )
     except RuntimeError as exc:
         logger.error(f"Retrieval failed: {exc}")
@@ -163,20 +152,46 @@ async def classify(req: ClassifyRequest):
             detail      = f"Vector retrieval unavailable: {exc}",
         )
 
+    # Step 2b: Fallback to secondary query if primary returns nothing     if not candidates and primary_query != secondary_query:
+        logger.info(f"classify | primary returned 0 results, trying secondary: '{secondary_query}'")
+        try:
+            candidates = retriever.retrieve(
+                query_text   = secondary_query,
+                top_k        = settings.retrieval_top_k,
+                chapter_hint = chapter_hint,
+            )
+        except RuntimeError:
+            pass  # fall through to 404 below
+
+    # Step 2c: Last-resort raw query if expansion still returns nothing     if not candidates and expansion["expanded"]:
+        raw_query = f"{req.product_name} {req.description}".strip()
+        logger.info(f"classify | secondary failed, trying raw: '{raw_query}'")
+        try:
+            candidates = retriever.retrieve(
+                query_text = raw_query,
+                top_k      = settings.retrieval_top_k,
+            )
+        except RuntimeError:
+            pass
+
     if not candidates:
         raise HTTPException(
             status_code = status.HTTP_404_NOT_FOUND,
             detail      = (
                 "No HS codes found matching this product. "
-                "Try a more specific product name or description."
+                "Try adding more detail to the description — include the material, "
+                "form (raw/processed/new/used), and intended use of the product."
             ),
         )
 
-    # ── Step 2: LLM rerank ─────────────────────────────────────────────────────
+    # Step 3: LLM rerank 
     rerank_result = reranker.rerank(
-        product_name = req.product_name,
-        description  = req.description,
-        candidates   = candidates,
+        product_name        = req.product_name,
+        description         = req.description,
+        candidates          = candidates,
+        origin_country      = origin,
+        destination_country = destination,
+        expanded_query      = primary_query if expansion["expanded"] else None,
     )
 
     best_idx   = rerank_result["best_index"]
@@ -185,11 +200,17 @@ async def classify(req: ClassifyRequest):
 
     best_candidate = candidates[best_idx]
 
-    # ── Step 3: Build response ─────────────────────────────────────────────────
-    best_match   = _to_tariff_match(best_candidate)
+    # Step 4: Build trade context 
+    best_match     = _to_tariff_match(best_candidate)
     national_found = _is_national_subheading(best_candidate.get("tarif_no", ""))
+    trade_ctx      = build_trade_context(
+        origin      = origin,
+        destination = destination,
+        rates       = best_match.rates,
+        hs_code     = best_match.tarif_no,
+    )
 
-    # Alternatives: exclude the best match, take up to rerank_top_n
+    # Step 5: Build alternatives 
     alt_candidates = [c for i, c in enumerate(candidates) if i != best_idx]
     alternatives   = [
         _to_tariff_match(c)
@@ -198,7 +219,8 @@ async def classify(req: ClassifyRequest):
 
     logger.info(
         f"classify | result={best_match.tarif_no} | "
-        f"confidence={confidence:.2f} | fallback={rerank_result['fallback']}"
+        f"confidence={confidence:.2f} | regime={trade_ctx.rate_regime} | "
+        f"rate={trade_ctx.applicable_rate} | fallback={rerank_result['fallback']}"
     )
 
     return ClassifyResponse(
@@ -206,7 +228,11 @@ async def classify(req: ClassifyRequest):
         national_subheading_found = national_found,
         confidence                = round(confidence, 4),
         reasoning                 = reasoning,
+        trade_context             = trade_ctx,
         alternatives              = alternatives,
         query_product             = req.product_name,
         query_description         = req.description,
+        query_origin              = origin,
+        query_destination         = destination,
+        expanded_query_used       = primary_query if expansion["expanded"] else None,
     )

@@ -1,15 +1,14 @@
 from typing import Optional
-from pydantic import BaseModel, Field 
+from pydantic import BaseModel, Field
 
 # Request
-
 class ClassifyRequest(BaseModel):
     product_name: str = Field(
         ...,
         min_length=2,
         max_length=300,
         description="Short name or trade name of the product",
-        examples=["Frozen chicken wings"],
+        examples=["iPhone 13 Pro Max"],
     )
     description: str = Field(
         default="",
@@ -18,26 +17,58 @@ class ClassifyRequest(BaseModel):
             "Optional longer description — include material, form, intended use, "
             "or trade terms. More detail improves classification accuracy."
         ),
-        examples=["Poultry wings from broiler chickens, frozen, for retail sale"],
+        examples=["Apple smartphone with 6.7-inch OLED display, 5G, 256GB storage, for retail sale"],
     )
     language: str = Field(
         default="en",
         pattern="^(en|fr)$",
         description="Language of your query: 'en' (English) or 'fr' (French)",
     )
+    origin_country: str = Field(
+        default="CN",
+        min_length=2,
+        max_length=2,
+        description=(
+            "ISO 3166-1 alpha-2 country code of the country where the goods originate "
+            "(country of manufacture or last substantial transformation). "
+            "Default: 'CN' (China). Examples: 'CN', 'US', 'DE', 'FR'."
+        ),
+        examples=["CN"],
+    )
+    destination_country: str = Field(
+        default="CM",
+        min_length=2,
+        max_length=2,
+        description=(
+            "ISO 3166-1 alpha-2 country code of the destination (importing) country. "
+            "Default: 'CM' (Cameroon). Affects applicable duty rates and trade agreement eligibility."
+        ),
+        examples=["CM"],
+    )
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
+                    "product_name": "iPhone 13 Pro Max",
+                    "description": "Apple smartphone with 6.7-inch OLED display, 5G, 256GB storage, for retail sale",
+                    "language": "en",
+                    "origin_country": "CN",
+                    "destination_country": "CM",
+                },
+                {
                     "product_name": "Frozen chicken wings",
                     "description": "Poultry wings from broiler chickens, frozen, for retail sale",
                     "language": "en",
+                    "origin_country": "BR",
+                    "destination_country": "CM",
                 },
                 {
                     "product_name": "Ciment Portland blanc",
                     "description": "Ciment blanc non coloré artificiellement, en sacs de 50kg",
                     "language": "fr",
+                    "origin_country": "FR",
+                    "destination_country": "CM",
                 },
             ]
         }
@@ -45,7 +76,6 @@ class ClassifyRequest(BaseModel):
 
 
 # Sub-models
-
 class TariffRates(BaseModel):
     """Tax rates associated with a tariff line."""
     dd_rate:     Optional[str] = Field(
@@ -72,6 +102,36 @@ class TariffRates(BaseModel):
         description=(
             "Unité Quantitative de Nomenclature — the statistical unit "
             "for quantity declaration: 'kg', 'u' (unit), 'l' (litre), etc."
+        ),
+    )
+
+
+class TradeContext(BaseModel):
+    """Origin/destination trade context and applicable rate guidance."""
+    origin_country:      str = Field(..., description="ISO 3166-1 alpha-2 origin country code")
+    destination_country: str = Field(..., description="ISO 3166-1 alpha-2 destination country code")
+    rate_regime:         str = Field(
+        ...,
+        description=(
+            "The duty rate regime that applies based on origin/destination pair. "
+            "One of: 'CET' (CEMAC Common External Tariff — standard), "
+            "'EPA' (EU-CEMAC interim EPA preferential rate), "
+            "'MFN' (Most Favoured Nation — WTO rate for non-CEMAC, non-EPA partners)."
+        ),
+    )
+    applicable_rate:     Optional[str] = Field(
+        None,
+        description=(
+            "The effective customs duty rate string under the applicable regime "
+            "for this specific HS code and trade pair. "
+            "May be a percentage, 'ex' (exempt), or null if undetermined."
+        ),
+    )
+    trade_notes:         Optional[str] = Field(
+        None,
+        description=(
+            "Short plain-language note on any trade agreement, preference, or "
+            "restriction relevant to this origin/destination pair for this product."
         ),
     )
 
@@ -122,7 +182,7 @@ class TariffMatch(BaseModel):
 class ClassifyResponse(BaseModel):
     """Full classification response."""
 
-    # Primary result─
+    # Primary result
     best_match: TariffMatch = Field(
         ...,
         description="The best matching HS code selected by the LLM reranker",
@@ -146,6 +206,15 @@ class ClassifyResponse(BaseModel):
         description="Plain-language explanation of why this code was selected",
     )
 
+    # Trade context
+    trade_context: TradeContext = Field(
+        ...,
+        description=(
+            "Origin/destination context and the effective duty rate regime "
+            "applicable to this shipment."
+        ),
+    )
+
     # Alternatives
     alternatives: list[TariffMatch] = Field(
         default_factory=list,
@@ -156,8 +225,17 @@ class ClassifyResponse(BaseModel):
     )
 
     # Request echo
-    query_product:     str = Field(..., description="Product name as submitted")
-    query_description: str = Field("",  description="Description as submitted")
+    query_product:        str = Field(..., description="Product name as submitted")
+    query_description:    str = Field("",  description="Description as submitted")
+    query_origin:         str = Field(..., description="Origin country ISO code as submitted")
+    query_destination:    str = Field(..., description="Destination country ISO code as submitted")
+    expanded_query_used:  Optional[str] = Field(
+        None,
+        description=(
+            "The trade-language query actually sent to the vector index "
+            "(after brand-name expansion). Shown for transparency."
+        ),
+    )
 
 
 # Utility responses
@@ -166,7 +244,7 @@ class HealthResponse(BaseModel):
     status:        str = Field(..., description="'ok' or 'degraded'")
     pinecone:      str = Field(..., description="Pinecone connection status")
     index_vectors: int = Field(0,   description="Total vectors in the index")
-    version:       str = Field("1.0.0")
+    version:       str = Field("1.1.0")
 
 
 class ErrorResponse(BaseModel):
